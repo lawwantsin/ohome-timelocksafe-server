@@ -1,0 +1,16 @@
+LED states:
+
+    * OFF means no power or booting.
+    * SOLIDLY ON means that the box is not been set up (no enabled alarms).
+    * BLINKING FAST (4 times/sec) means the box is unlocked can can be opened.
+    * BREATHING means it is locked.
+    * BLINKING SLOW (once every five secs) means something is wrong.
+
+After plugging in the box wait for the LED to illuminate and then connect your
+laptop to the wifi network created by the box with network name:
+
+    Go to http://box/ (172.16.0.1).
+
+(Yes that whole thing is the network name and should be visible in the drop-
+down wifi menu.)  You should be able to go to any http site (but https won't
+work) and get the box page.

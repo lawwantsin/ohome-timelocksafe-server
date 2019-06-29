@@ -1,0 +1,62 @@
+cat .ash_history 
+set
+set|grep HIST
+history 
+man history 
+history --help
+history -h
+history -c
+cat .ashrc 
+cat .profile 
+history 
+cat .ash_history 
+ls
+lsss
+history 
+cat .ash_history 
+>.ash_history 
+cat .ash_history 
+ls
+ps
+sudo kill 851
+ps
+sudo kill 1142
+ps
+sudo kill 1152
+ps
+sudo kill 1161
+ps
+sudo kill 1172
+ps
+sudo kill 1178
+pidof http
+ps
+pidof httpd.py
+sudo kill $(pidof httpd.py)
+ps
+sudo kill 1197
+sudo kill $(pidof httpd.py)
+ps
+sudo kill 1208
+sudo kill $(pidof httpd.py)
+ps
+sudo kill 1219
+sudo kill $(pidof httpd.py)
+ps
+sudo kill 1230
+sudo kill $(pidof httpd.py)
+ps
+ls
+cat .ash_history 
+ls
+sudo rm -rf __pycache__/
+ls -la
+>box.log 
+cat box.log 
+cat .ash_history 
+ls
+cat README.txt 
+sudo ./arm-sdtool /dev/mmcblk0 unlock
+mount /mnt/mmcblk0p2
+sudo mount -o remount,rw /mnt/mmcblk0p2
+filetool.sh -bv
