@@ -9,6 +9,7 @@
 import sys, traceback, http.server, urllib.parse
 import HTMLContent  # Local.
 import Hardware  # Local.
+from os import curdir
 
 class HTMLContentWrapper():
     """As requested, attempt to (badly) keep some seperation between the
@@ -96,7 +97,11 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
 
         if not qs_ns:
 
-            if path == '/diag':
+            if path == '/html':
+                f = open(curdir + "/static/index.html")
+                return 200, f.read()
+
+            if path == '/diags':
                 return 200, HTMLContentWrapper.get_diag_page()
 
             elif path == '/log':
@@ -169,6 +174,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                         .manually_unlock_for_a_minute())
 
             elif set(qs_ns) == set(["y", "mo", "d", "h", "mi", "s", "tz"]):
+                # Set Time
                 try:
                     return 200, HTMLContent.get_set_dt_tz_done_page(
                             errstr=Hardware.set_datetime_and_timezone(
@@ -192,6 +198,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             elif set(["h", "m", "mb", "mf"]).issubset(set(qs_ns)) and \
                     set(qs_ns).issubset(set(["h", "m", "mb", "mf",
                     'dowm', 'dowt', 'doww', 'dowh', 'dowf', 'dows', 'dowu'])):
+                # Set alarm
                 try:
                     h = qs_vs[qs_ns.index("h")]
                     m = qs_vs[qs_ns.index("m")]
@@ -211,6 +218,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                     return 200, HTMLContent.add_alarm_done_page(errstr=err)
 
             elif qs_ns == ["toggleaid", ]:
+                # Enable/Disable Alarm
                 try:
                     return 200, HTMLContent.get_toggle_alarm_done_page(
                             errstr=Hardware.toggle_alarm(int(qs_vs[0])))
@@ -221,6 +229,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                     return 200, HTMLContent.get_toggle_alarm_done_page(errstr=err)
 
             elif qs_ns == ["delaid", ]:
+                # Delete an alarm
                 try:
                     return 200, HTMLContent.get_del_alarm_done_page(
                             errstr=Hardware.del_alarm(int(qs_vs[0])))

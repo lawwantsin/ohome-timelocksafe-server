@@ -108,11 +108,11 @@ def get_path_not_found_page(path):
                     }
                     var timer_1 = setInterval(function() {
                         if (timeleft > 1) {
-                            document.getElementById("trem").innerHTML = 
+                            document.getElementById("trem").innerHTML =
                                 ", and might be forwarded in "
                                 + timeleft + " seconds.";
                         } else if (timeleft == 1) {
-                            document.getElementById("trem").innerHTML = 
+                            document.getElementById("trem").innerHTML =
                                 ", and might be forwarded in a second.";
                         } else {
                             document.getElementById("trem").innerHTML =
@@ -123,10 +123,10 @@ def get_path_not_found_page(path):
                     }, 1000);
                 </script>
                 <p>The page &ldquo;%s&rdquo; is not found.</p>
-                <p>But that might be expected since when one is connected to 
+                <p>But that might be expected since when one is connected to
                 this Wi-Fi network everything (except the domains that are in
                 your DNS cache) are redirected here.</p>
-                <p>So, you are probably looking to go 
+                <p>So, you are probably looking to go
                 <a href="/">here</a><span id="trem">, and might
                 be forwarded in a few seconds.</span></p>
             </body>
@@ -173,10 +173,10 @@ def get_reset_done_page():
                     }
                     var timer_1 = setInterval(function() {
                         if (timeleft > 1) {
-                            document.getElementById("trem").innerHTML = 
+                            document.getElementById("trem").innerHTML =
                                 "" + timeleft + " seconds";
                         } else if (timeleft == 1) {
-                            document.getElementById("trem").innerHTML = 
+                            document.getElementById("trem").innerHTML =
                                 "a second";
                         } else {
                             document.getElementById("trem").innerHTML =
@@ -429,7 +429,7 @@ def get_template_index_page(html_body):
             <head>
                 <meta charset="utf-8">
                 <title>WeedSafe Box</title>
-                <h1>WeedSafe Box</h1>
+                <h1>WeedSafe Box 2</h1>
             </head>
             <body>
         %s
@@ -578,7 +578,7 @@ def get_index_NOALARMS_UNLOCKED_page(dt_loc_str, alarm_aid_str):
 
     return get_template_index_page(textwrap.dedent("""\
         <p>Current local time is: %s <a href="/settime">change</a></p>
-        <h2>Alarms:</h2>
+        <h2>Alarms 2:</h2>
         <p>The awful format (which should be changed) is: ID enabled (active_days_of_the_week_Mon=0) hour:min-mins_before+mins_after</p>
         %s
         <br><br>

@@ -9,7 +9,7 @@ LED states:
 After plugging in the box wait for the LED to illuminate and then connect your
 laptop to the wifi network created by the box with network name:
 
-    Go to http://box/ (172.16.0.1).
+    Go to http://box.box/ (172.16.0.1).
 
 (Yes that whole thing is the network name and should be visible in the drop-
 down wifi menu.)  You should be able to go to any http site (but https won't
