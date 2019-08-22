@@ -25,7 +25,8 @@ if [[ "$1" == "RESTART_ONLY" ]]; then
     # we are within the restart limit, 5 minutes.
     # Also, this shell can't do arithmatic with fractional
     # numbers so we are restricted to one second precision.
-    MAX_WAIT_SECS=$((60*5))
+    MAX_WAIT_SECS=$((12))
+    # MAX_WAIT_SECS=$((60*5)) # This shit is too long.
     MIN_WAIT_SECS=1
     CURRENT_WAIT_SECS=$MIN_WAIT_SECS
 

@@ -9,7 +9,6 @@
 import sys, traceback, http.server, urllib.parse
 import HTMLContent  # Local.
 import Hardware  # Local.
-from os import curdir
 
 class HTMLContentWrapper():
     """As requested, attempt to (badly) keep some seperation between the
@@ -90,18 +89,28 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
     def choose_path(self):
         """Return a response code and html content, or throw an exception on
         error.  This is it's own function so we can just return when the
-        correct page is found instead of an annoying-to-read-and-write nested
+        correct page if found instead of an annoying-to-read-and-write nested
         if-and-elif-and-else mess."""
 
         path, qs_ns, qs_vs = self.split_path_and_query_string(self.path)
 
         if not qs_ns:
+            print("PATH: "+path)
+            if (path.find('/html') != -1):
+                try:
+                    if path.endswith(".html") or path.endswith(".svg") or path.endswith(".css") or path.endswith(".js")  or path.endswith(".ico")  or path.endswith(".png"):
+                        file = '/home/tc/static' + path[5:]
+                    else:
+                        file = '/home/tc/static/index.html'
+                    print("FILE: " + file)
+                    f = open(file)
+                    return 200, f.read()
 
-            if path == '/html':
-                f = open(curdir + "/static/index.html")
-                return 200, f.read()
+                except IOError:
+                    print("ERROR: " + self.path)
+                    return 404, HTMLContent.get_path_not_found_page(self.path)
 
-            if path == '/diags':
+            elif path == '/diags':
                 return 200, HTMLContentWrapper.get_diag_page()
 
             elif path == '/log':
@@ -242,6 +251,21 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         # Nothing matched (path or query string), so return a 404.
         return 404, HTMLContent.get_path_not_found_page(self.path)
 
+    def guess_type(self, path):
+        if (path.find(".") != -1):
+            ext = path.split(".")[-1]
+            ext = ext.lower()
+            types = {
+                'html': "text/html",
+                'css': "text/css",
+                'js': "text/javascript",
+                'svg': "image/svg+xml",
+                'png': "image/png",
+                'ico': "image/ico"
+            }
+            return types[ext]
+        else:
+            return "text/html"
 
     def do_GET(self):
         """We only use the following response codes:
@@ -268,8 +292,9 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             print(f"{self.path}:\n{err}", file=sys.stderr)
             html_content = HTMLContent.get_exception_page(err)
         finally:
+            path, qs_ns, qs_vs = self.split_path_and_query_string(self.path)
             self.send_response(html_response)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", self.guess_type(path))
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.send_header("Pragma", "no-cache")
             self.send_header("Expires", "0")

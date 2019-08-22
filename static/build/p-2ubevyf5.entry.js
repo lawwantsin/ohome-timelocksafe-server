@@ -1,0 +1,1 @@
+import{r as t,h as e}from"./p-3278c467.js";class r{constructor(e){t(this,e)}render(){return e("div",{class:"detail"},e("h1",null,"Detail"))}static get style(){return""}}export{r as detail_page};
