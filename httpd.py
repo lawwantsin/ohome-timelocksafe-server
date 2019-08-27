@@ -218,6 +218,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                     return 200, HTMLContent.get_set_dt_tz_done_page(
                             errstr=err)
 
+
             elif set(["h", "m", "mb", "mf"]).issubset(set(qs_ns)) and \
                     set(qs_ns).issubset(set(["h", "m", "mb", "mf",
                     'dowm', 'dowt', 'doww', 'dowh', 'dowf', 'dows', 'dowu'])):
