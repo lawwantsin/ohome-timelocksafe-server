@@ -383,14 +383,14 @@ class StateVariablesAlarmThread():
     them.  In addition, they are related (changing some of them implies that
     others should change at the same time) so there are no setters or getters,
     and only one lock (to cover them all).
-    
-    The backgrount thread waits on an event, with a timeout.  So when it is in
+
+    The background thread waits on an event, with a timeout.  So when it is in
     the LOCKED or UNLOCKED states it will set this timeout to be right after
     when it needs to change something, otherwise it is woken up when any of
     the input variables change (setting an event) and it then re-calculates
     what the current state should be.  The only things used in determining
     state are the RTC time and these variables.
-    
+
     The flow goes something like this:  the thread waits on an event, then
     locks the variables, clears the event, mucks about to set the state, and
     then releases the lock.  The rest of this program locks the lock, mucks
@@ -437,7 +437,7 @@ class StateVariablesAlarmThread():
         OVERRIDE, for one minute.  We don't want to allow this to be
         too long since it's just for someone to press it and immediately go
         open the box.
-        
+
         If state is locked return False, otherwise return True."""
         with cls.var_lock:
             if cls.state == STATE.LOCKED:
@@ -448,7 +448,7 @@ class StateVariablesAlarmThread():
                 # the pi is set to and don't care, but we need to be careful
                 # that we only pay attention to differeneces instead of
                 # absolute times.
-                cls.override_latch_until = time.monotonic() + 60.0
+                cls.override_latch_until = time.monotonic() + 10.0
                 cls.var_event.set()
                 return True
 
@@ -459,10 +459,10 @@ class StateVariablesAlarmThread():
         over the timezone `timezone`) are currently firing, `False` otherwise;
         and timeout is the number of (float) seconds until the next event (an
         alarm starting or ceasing to fire).
-        
+
         The three arguments are expected to be of types datetime (with
         tzinfo=pytz.utc), pytz.timezone, and a list of Alarm instances.
-        
+
         This is a static method which uses no global shared state so we can
         call it from the background thread without synchronizing anything."""
 
@@ -483,7 +483,7 @@ class StateVariablesAlarmThread():
             change).  Therefore the returned list could have 0, 1, or 2
             elements (each of which is a 2-tuple of the UTC dt the alarm
             starts and stops firing).
-            
+
             The `pytz` module has some interesting behaviour when localizing,
             namely if `is_dst` is not passed in it will guess which time to
             use if there is more than one possibility, if `is_dst` is None
@@ -497,7 +497,7 @@ class StateVariablesAlarmThread():
             same time as the initial datetime)).  And finally, if the datetime
             does not fall over a discontinuity then it will return the same
             datetime for both `True` and `False`.
-            
+
             Here we hang on to both possibilities and say yes it is firing for
             them both.  This means that sometimes the box may be unlocked
             twice, which is better than the alternative of it not unlocking at

@@ -8,6 +8,7 @@
 
 import sys, traceback, http.server, urllib.parse
 import HTMLContent  # Local.
+import JSONContent  # Local.
 import Hardware  # Local.
 
 class HTMLContentWrapper():
@@ -37,6 +38,8 @@ class HTMLContentWrapper():
             hw_state_desc,
             Hardware.get_alarm_strings(),
             )
+
+
 
 
 class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
@@ -96,6 +99,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
 
         if not qs_ns:
             print("PATH: "+path)
+            # New Routes
             if (path.find('/html') != -1):
                 try:
                     if path.endswith(".html") or path.endswith(".svg") or path.endswith(".css") or path.endswith(".js")  or path.endswith(".ico")  or path.endswith(".png"):
@@ -110,6 +114,16 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                     print("ERROR: " + self.path)
                     return 404, HTMLContent.get_path_not_found_page(self.path)
 
+            elif path == '/timezones.json':
+                tzs = Hardware.get_common_timezones()
+                print("TZ:", tzs);
+                return 200, JSONContent.timezones(tzs)
+
+            elif path == '/alarms':  # THIS!!!
+                return 200, HTMLContentWrapper.get_diag_page()
+
+
+            # Legacy Routes
             elif path == '/diags':
                 return 200, HTMLContentWrapper.get_diag_page()
 
@@ -261,7 +275,8 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                 'js': "text/javascript",
                 'svg': "image/svg+xml",
                 'png': "image/png",
-                'ico': "image/ico"
+                'ico': "image/ico",
+                "json": "application/json"
             }
             return types[ext]
         else:
