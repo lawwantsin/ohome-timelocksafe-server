@@ -116,12 +116,11 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
 
             elif path == '/timezones.json':
                 tzs = Hardware.get_common_timezones()
-                print("TZ:", tzs);
                 return 200, JSONContent.timezones(tzs)
 
-            elif path == '/alarms':  # THIS!!!
-                return 200, HTMLContentWrapper.get_diag_page()
-
+            elif path == '/alarms.json':
+                alarms = Hardware.get_alarm_strings();
+                return 200, JSONContent.alarms(alarms)
 
             # Legacy Routes
             elif path == '/diags':

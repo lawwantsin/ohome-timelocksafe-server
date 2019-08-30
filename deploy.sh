@@ -2,5 +2,5 @@
 
 cd ~/Web/Box
 scp -r static/* box:static/
-# scp httpd.py JSONContent.py HTMLContent.py Hardware.py box:~
+scp JSONContent.py HTMLContent.py Hardware.py httpd.py box:~
 ssh box

@@ -945,7 +945,7 @@ def add_new_alarm(h, m, mb, mf, dsow):
     with StateVariablesAlarmThread.var_lock:
         aid = len(StateVariablesAlarmThread.alarms)
         StateVariablesAlarmThread.alarms.append(
-            Alarm(aid, True, dsow_i, int(h), int(m), int(mb), int(mf)))
+            Alarm(aid, False, dsow_i, int(h), int(m), int(mb), int(mf)))
 
     _PRAM_write_tz_alarms()  # Gets the var_lock again.
     StateVariablesAlarmThread.var_event.set()

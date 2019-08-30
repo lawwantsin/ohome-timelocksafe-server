@@ -50,3 +50,10 @@ def timezones(tz):
             "data": %s
         }
         """) % json.dumps(tz)
+
+def alarms(alarms):
+    return textwrap.dedent("""\
+        {
+            "data": %s
+        }
+        """) % json.dumps(alarms)
