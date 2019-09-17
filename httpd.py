@@ -6,9 +6,9 @@
 # Since `BaseHTTPRequestHandler` does not automatically do that (obviously),
 # it would be kinda a pain to subclass just for that.
 
-import sys, traceback, http.server, urllib.parse
+import sys, traceback, http.server, urllib.parse, json, textwrap
 import HTMLContent  # Local.
-import JSONContent  # Local.
+# import self  # Local.
 import Hardware  # Local.
 
 class HTMLContentWrapper():
@@ -46,6 +46,28 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
 
     # Kill the server on reset, after sending the page, so we'll re-read PRAM.
     kill_this_process = False
+
+    def data_response(self, data):
+        return textwrap.dedent("""\
+            {
+                "data": %s
+            }
+            """) % json.dumps(data)
+
+    def simple_response(self, msg):
+        return textwrap.dedent("""\
+            {
+                "message": %s
+            }
+            """) % json.dumps(msg)
+
+    def error_response(self, msg):
+        return textwrap.dedent("""\
+            {
+                "message": %s
+            }
+            """) % json.dumps(msg)
+
 
     def split_path_and_query_string(self, path_qs):
         """BaseHTTPRequestHandler provides the query string in the path, so we
@@ -97,33 +119,139 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
 
         path, qs_ns, qs_vs = self.split_path_and_query_string(self.path)
 
-        if not qs_ns:
-            print("PATH: "+path)
-            # New Routes
-            if (path.find('/html') != -1):
-                try:
-                    if path.endswith(".html") or path.endswith(".svg") or path.endswith(".css") or path.endswith(".js")  or path.endswith(".ico")  or path.endswith(".png"):
-                        file = '/home/tc/static' + path[5:]
-                    else:
-                        file = '/home/tc/static/index.html'
-                    print("FILE: " + file)
+        try:
+            if path.endswith(".html") or path.endswith(".svg") or path.endswith(".css") or path.endswith(".js")  or path.endswith(".ico")  or path.endswith(".png"):
+                file = '/home/tc/static' + path
+                if path.endswith(".ico")  or path.endswith(".png"):
+                    f = open(file, mode="rb")
+                else:
                     f = open(file)
-                    return 200, f.read()
+                return 200, f.read()
 
-                except IOError:
-                    print("ERROR: " + self.path)
-                    return 404, HTMLContent.get_path_not_found_page(self.path)
+        except IOError:
+            print("ERROR: " + self.path)
+            return 404, HTMLContent.get_path_not_found_page(self.path)
 
-            elif path == '/timezones.json':
-                tzs = Hardware.get_common_timezones()
-                return 200, JSONContent.timezones(tzs)
+        if path == '/':
+            file = '/home/tc/static/index.html'
+            f = open(file)
+            return 200, f.read()
 
-            elif path == '/alarms.json':
-                alarms = Hardware.get_alarm_strings();
-                return 200, JSONContent.alarms(alarms)
+        elif path == '/timezones.json':
+            tzs = Hardware.get_common_timezones()
+            return 200, self.data_response(tzs)
 
-            # Legacy Routes
-            elif path == '/diags':
+        elif path == '/alarms.json':
+            alarms = Hardware.get_alarm_strings();
+            return 200, self.data_response(alarms)
+
+        elif path == '/time.json':
+            rtc_dt_utc = Hardware.get_datetime()
+            return 200, self.data_response({
+                "local": Hardware.fmt_datetime_local(rtc_dt_utc),
+                "utc": Hardware.fmt_datetime(rtc_dt_utc)
+            })
+        # Set alarm
+        elif path == '/edit.json':
+            if set(["h", "m", "mb", "mf"]).issubset(set(qs_ns)) and \
+                set(qs_ns).issubset(set(["h", "m", "mb", "mf", 'dowm', 'dowt', \
+                'doww', 'dowh', 'dowf', 'dows', 'dowu'])):
+                try:
+                    h = qs_vs[qs_ns.index("h")]
+                    m = qs_vs[qs_ns.index("m")]
+                    mb = qs_vs[qs_ns.index("mb")]
+                    mf = qs_vs[qs_ns.index("mf")]
+                    dsow = []
+                    for dow in ('dowm', 'dowt', 'doww', 'dowh', 'dowf', \
+                            'dows', 'dowu'):
+                        if dow in qs_ns:
+                            dsow.append(qs_vs[qs_ns.index(dow)])
+                            Hardware.add_new_alarm(h, m, mb, mf, dsow)
+                    return 200, self.simple_response("Success Adding Alarm")
+                except Exception:
+                    err = "".join(traceback.format_exception(*sys.exc_info()))
+                    print(f"{self.path}:\n{err}", file=sys.stderr)
+                    return 500, self.error_response(err)
+            else:
+                return 500, self.error_response("Missing valid parameters");
+
+        # Set Time
+        elif path == '/setup.json':
+            if set(qs_ns) == set(["y", "mo", "d", "h", "mi", "s", "tz"]):
+                try:
+                    Hardware.set_datetime_and_timezone(
+                        qs_vs[qs_ns.index("y")],
+                        qs_vs[qs_ns.index("mo")],
+                        qs_vs[qs_ns.index("d")],
+                        qs_vs[qs_ns.index("h")],
+                        qs_vs[qs_ns.index("mi")],
+                        qs_vs[qs_ns.index("s")],
+                        qs_vs[qs_ns.index("tz")],
+                    )
+                    return 200, self.simple_response("Success Setting Up")
+                except Exception:
+                    err = "".join(traceback.format_exception(*sys.exc_info()))
+                    print(f"{self.path}:\n{err}", file=sys.stderr)
+                    return 500, self.error_response(err)
+            else:
+                return 500, self.error_response("Missing valid parameters");
+
+        # Reset the PRAM
+        elif path == '/reset.json':
+            if (qs_ns, qs_vs) == (["reset", ], ["yes_really", ]):
+                try:
+                    self.kill_this_process = True
+                    Hardware.PRAM_clear()
+                    return 200, self.simple_response("Box Reset.  Restarting now.")
+                except Exception:
+                    err = "".join(traceback.format_exception(*sys.exc_info()))
+                    print(f"{self.path}:\n{err}", file=sys.stderr)
+                    return 500, self.error_response(err)
+            else:
+                return 500, self.error_response("Missing valid parameter");
+
+        # Unlock Box for 1 Minute
+        elif path == '/unlock.json':
+            if (qs_ns, qs_vs) == (["unlockonemin", ], ["true", ]):
+                try:
+                    h = Hardware.StateVariablesAlarmThread.manually_unlock_for_a_minute()
+                    return 200, self.simple_response("Successfully unlocked")
+                except Exception:
+                    err = "".join(traceback.format_exception(*sys.exc_info()))
+                    print(f"{self.path}:\n{err}", file=sys.stderr)
+                    return 500, self.error_response(err)
+            else:
+                return 500, self.error_response("Missing valid parameter");
+
+        # Enable/Disable Alarm
+        elif path == '/toggle.json':
+            if qs_ns == ["toggleaid", ]:
+                try:
+                    h = Hardware.toggle_alarm(int(qs_vs[0]))
+                    return 200, self.simple_response("Successfully toggled")
+                except Exception:
+                    err = "".join(traceback.format_exception(*sys.exc_info()))
+                    print(f"{self.path}:\n{err}", file=sys.stderr)
+                    return 500, self.error_response(err)
+            else:
+                return 500, self.error_response("Missing id parameter");
+
+        # Delete an alarm
+        elif path == '/delete.json':
+            if qs_ns == ["delaid", ]:
+                try:
+                    h = Hardware.del_alarm(int(qs_vs[0]))
+                    return 200, self.simple_response(h)
+                except Exception:
+                    err = "".join(traceback.format_exception(*sys.exc_info()))
+                    print(f"{self.path}:\n{err}", file=sys.stderr)
+                    return 500, self.error_response(err)
+            else:
+                return 500, self.error_response("Missing id parameter");
+
+        # Legacy Routes
+        elif not qs_ns:
+            if path == '/diags':
                 return 200, HTMLContentWrapper.get_diag_page()
 
             elif path == '/log':
@@ -176,91 +304,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                     raise Exception(Hardware.get_unrecoverable_error_str())
 
                 else:
-                    raise Exception(f"Unknown hardware state:  {hw_state}")
-
-        elif path == '/':  #  Here we for sure have something in qs_ns.
-
-            if (qs_ns, qs_vs) == (["reset", ], ["yes_really", ]):
-                # First so this works in any hardware state (yes this is a
-                # way to get into the box when it's locked, but most people
-                # won't know how to manually append a query string to the URL
-                # in thier browser bar, and there are so many more ways to
-                # get in even without this).
-                self.kill_this_process = True
-                Hardware.PRAM_clear()
-                return 200, HTMLContent.get_reset_done_page()
-
-            elif (qs_ns, qs_vs) == (["unlockonemin", ], ["true", ]):
-                return 200, HTMLContent.get_unlockonemin_page( \
-                    Hardware.StateVariablesAlarmThread \
-                        .manually_unlock_for_a_minute())
-
-            elif set(qs_ns) == set(["y", "mo", "d", "h", "mi", "s", "tz"]):
-                # Set Time
-                try:
-                    return 200, HTMLContent.get_set_dt_tz_done_page(
-                            errstr=Hardware.set_datetime_and_timezone(
-                                qs_vs[qs_ns.index("y")],
-                                qs_vs[qs_ns.index("mo")],
-                                qs_vs[qs_ns.index("d")],
-                                qs_vs[qs_ns.index("h")],
-                                qs_vs[qs_ns.index("mi")],
-                                qs_vs[qs_ns.index("s")],
-                                qs_vs[qs_ns.index("tz")],
-                                ))
-                except Exception:
-                    err = "".join(traceback.format_exception(*sys.exc_info()))
-                    print(f"{self.path}:\n{err}", file=sys.stderr)
-                    # Still return 200.  We don't use 500 b/c this might be
-                    # recoverable (like if the user entered an invalid month
-                    # they should be able to re-enter).
-                    return 200, HTMLContent.get_set_dt_tz_done_page(
-                            errstr=err)
-
-
-            elif set(["h", "m", "mb", "mf"]).issubset(set(qs_ns)) and \
-                    set(qs_ns).issubset(set(["h", "m", "mb", "mf",
-                    'dowm', 'dowt', 'doww', 'dowh', 'dowf', 'dows', 'dowu'])):
-                # Set alarm
-                try:
-                    h = qs_vs[qs_ns.index("h")]
-                    m = qs_vs[qs_ns.index("m")]
-                    mb = qs_vs[qs_ns.index("mb")]
-                    mf = qs_vs[qs_ns.index("mf")]
-                    dsow = []
-                    for dow in ('dowm', 'dowt', 'doww', 'dowh', 'dowf', \
-                            'dows', 'dowu'):
-                        if dow in qs_ns:
-                            dsow.append(qs_vs[qs_ns.index(dow)])
-                    return 200, HTMLContent.add_alarm_done_page(
-                            errstr=Hardware.add_new_alarm(h, m, mb, mf, dsow))
-                except Exception:
-                    err = "".join(traceback.format_exception(*sys.exc_info()))
-                    print(f"{self.path}:\n{err}", file=sys.stderr)
-                    # Still return 200.  Might be recoverable.
-                    return 200, HTMLContent.add_alarm_done_page(errstr=err)
-
-            elif qs_ns == ["toggleaid", ]:
-                # Enable/Disable Alarm
-                try:
-                    return 200, HTMLContent.get_toggle_alarm_done_page(
-                            errstr=Hardware.toggle_alarm(int(qs_vs[0])))
-                except Exception:
-                    err = "".join(traceback.format_exception(*sys.exc_info()))
-                    print(f"{self.path}:\n{err}", file=sys.stderr)
-                    # Still return 200.  Might be recoverable.
-                    return 200, HTMLContent.get_toggle_alarm_done_page(errstr=err)
-
-            elif qs_ns == ["delaid", ]:
-                # Delete an alarm
-                try:
-                    return 200, HTMLContent.get_del_alarm_done_page(
-                            errstr=Hardware.del_alarm(int(qs_vs[0])))
-                except Exception:
-                    err = "".join(traceback.format_exception(*sys.exc_info()))
-                    print(f"{self.path}:\n{err}", file=sys.stderr)
-                    # Still return 200.  Might be recoverable.
-                    return 200, HTMLContent.get_del_alarm_done_page(errstr=err)
+                    raise Exception("Unknown hardware state:  {hw_state}")
 
         # Nothing matched (path or query string), so return a 404.
         return 404, HTMLContent.get_path_not_found_page(self.path)
@@ -278,7 +322,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                 'ico': "image/ico",
                 "json": "application/json"
             }
-            return types[ext]
+            return (types[ext], ext)
         else:
             return "text/html"
 
@@ -300,24 +344,28 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                  or whatever it could also be a bug in this thing.
         """
         try:
-            html_response, html_content = self.choose_path()
+            http_response, content = self.choose_path()
         except Exception:
-            html_response = 500
+            http_response = 500
             err = "".join(traceback.format_exception(*sys.exc_info()))
             print(f"{self.path}:\n{err}", file=sys.stderr)
-            html_content = HTMLContent.get_exception_page(err)
+            content = HTMLContent.get_exception_page(err)
         finally:
             path, qs_ns, qs_vs = self.split_path_and_query_string(self.path)
-            self.send_response(html_response)
-            self.send_header("Content-Type", self.guess_type(path))
+            type = self.guess_type(path)
+            self.send_response(http_response)
+            self.send_header("Content-Type", type[0])
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.send_header("Pragma", "no-cache")
             self.send_header("Expires", "0")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            if html_content:
-                self.wfile.write(html_content.encode("utf-8"))
+            if content and type[1] != 'png' and type[1] != 'ico':
+                self.wfile.write(content.encode("utf-8"))
+            elif content:
+                self.wfile.write(content)
             else:
-                self.wfile.write("<html><body>Unknown error.</body></html>")
+                self.wfile.write("<html><body>Unknown error.  No Content</body></html>")
             if self.kill_this_process:
                 sys.exit(1)  # Should be restarted by the OS.
 
