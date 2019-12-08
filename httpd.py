@@ -6,19 +6,17 @@
 # Since `BaseHTTPRequestHandler` does not automatically do that (obviously),
 # it would be kinda a pain to subclass just for that.
 
-import sys, traceback, http.server, urllib.parse, json, textwrap
+import os, sys, traceback, http.server, urllib.parse, json, textwrap, html
 import HTMLContent  # Local.
 # import self  # Local.
 import Hardware  # Local.
 
-class HTMLContentWrapper():
-    """As requested, attempt to (badly) keep some seperation between the
-    pretty interface and the functional parts, but a few things should
-    have some processing in this file, so this class is just a wrapper to
-    do some of that here instead of HTMLContent (which would otherwise have
-    to import and know things that are not really part of the UI."""
+class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
 
-    def get_diag_page():
+    # Kill the server on reset, after sending the page, so we'll re-read PRAM.
+    kill_this_process = False
+
+    def diag_response(self):
         rtc_dt_utc = Hardware.get_datetime()
         rtc_dt_local = Hardware.fmt_datetime_local(rtc_dt_utc)
         rtc_dt_utc = Hardware.fmt_datetime(rtc_dt_utc)
@@ -26,26 +24,23 @@ class HTMLContentWrapper():
                 Hardware.STATE.__doc__,
                 ((state.name, state.value) for state in Hardware.STATE),
             )
-        return HTMLContent.get_diag_page(
-            Hardware.versions_tuple,
-            Hardware.get_state_name(),
-            Hardware.get_unrecoverable_error_str(),
-            Hardware.get_timezone_name(),
-            rtc_dt_utc,
-            rtc_dt_local,
-            Hardware.get_temperature_fahrenheit(),
-            Hardware.proc_uptime_str(),
-            hw_state_desc,
-            Hardware.get_alarm_strings(),
-            )
-
-
-
-
-class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
-
-    # Kill the server on reset, after sending the page, so we'll re-read PRAM.
-    kill_this_process = False
+        state_name = Hardware.get_state_name()
+        next_state_time = Hardware.fmt_datetime(state_name[1])
+        state_name = state_name[0]
+        data = {
+            "alarms": Hardware.get_alarm_strings(),
+            "current_time_utc": rtc_dt_utc,
+            "current_time_local": rtc_dt_local,
+            # "hw_state": hw_state_desc,
+            "hw_temp": Hardware.get_temperature_fahrenheit(),
+            "state_name": state_name,
+            "next_state_time": next_state_time,
+            "timezone": Hardware.get_timezone_name(),
+            "uerror": Hardware.get_unrecoverable_error_str(),
+            "uptime": Hardware.proc_uptime_str(),
+            "version": Hardware.versions_tuple
+        }
+        return self.data_response(data)
 
     def data_response(self, data):
         return textwrap.dedent("""\
@@ -62,12 +57,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             """) % json.dumps(msg)
 
     def error_response(self, msg):
-        return textwrap.dedent("""\
-            {
-                "message": %s
-            }
-            """) % json.dumps(msg)
-
+        return self.simple_response(msg)
 
     def split_path_and_query_string(self, path_qs):
         """BaseHTTPRequestHandler provides the query string in the path, so we
@@ -118,25 +108,33 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         if-and-elif-and-else mess."""
 
         path, qs_ns, qs_vs = self.split_path_and_query_string(self.path)
+        hw_state, expect_ch_dt_utc = Hardware.get_state_name()
 
         try:
-            if path.endswith(".html") or path.endswith(".svg") or path.endswith(".css") or path.endswith(".js")  or path.endswith(".ico")  or path.endswith(".png"):
+            if path.endswith(".html") or path.endswith(".svg") or path.endswith(".css") or path.endswith(".js") or path.endswith(".ico") or path.endswith(".png"):
                 file = '/home/tc/static' + path
                 if path.endswith(".ico")  or path.endswith(".png"):
                     f = open(file, mode="rb")
                 else:
-                    f = open(file)
+                    f = open(file, encoding="utf-8")
                 return 200, f.read()
 
         except IOError:
             print("ERROR: " + self.path)
             return 404, HTMLContent.get_path_not_found_page(self.path)
 
-        if path == '/':
-            file = '/home/tc/static/index.html'
-            f = open(file)
-            return 200, f.read()
+        # These routes all server index.html for the JS App.
+        if  path == '/' or \
+            path.endswith("/logs") or \
+            path.endswith("/diag") or \
+            path.endswith("/alarms") or \
+            path.endswith("/setup") or \
+            path.endswith("/add"):
+                file = '/home/tc/static/index.html'
+                f = open(file, encoding="utf-8")
+                return 200, f.read()
 
+        # Data JSON API
         elif path == '/timezones.json':
             tzs = Hardware.get_common_timezones()
             return 200, self.data_response(tzs)
@@ -149,8 +147,44 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             rtc_dt_utc = Hardware.get_datetime()
             return 200, self.data_response({
                 "local": Hardware.fmt_datetime_local(rtc_dt_utc),
-                "utc": Hardware.fmt_datetime(rtc_dt_utc)
+                "utc": Hardware.fmt_datetime(rtc_dt_utc),
+                "boxState": Hardware.get_state_name()[0]
             })
+
+        elif path == '/diag.json':
+            try:
+                return 200, self.diag_response()
+            except Exception:
+                err = "".join(traceback.format_exception(*sys.exc_info()))
+                print(f"{self.path}:\n{err}", file=sys.stderr)
+                return 500, self.error_response(err)
+
+        elif path == '/logs.json':
+            try:
+                f = open(os.path.join(os.path.dirname(__file__), "box.log"))
+                return 200, self.data_response(f.read());
+            except Exception:
+                err = "".join(traceback.format_exception(*sys.exc_info()))
+                print(f"{self.path}:\n{err}", file=sys.stderr)
+                return 500, self.error_response(err)
+
+        # Reset the PRAM
+        elif path == '/reset.json':
+            try:
+                self.kill_this_process = True
+                Hardware.PRAM_clear()
+                return 200, self.simple_response("Box Reset.  Restarting now.")
+            except Exception:
+                err = "".join(traceback.format_exception(*sys.exc_info()))
+                print(f"{self.path}:\n{err}", file=sys.stderr)
+                return 500, self.error_response(err)
+
+        # !!!!IMPORTANT!!!! THIS IS THE ENTIRETY OF THE SERVER SECURITY.
+        # EVERYTHING UNDER THIS IF-STATEMENT IS PROTECTED WHILE LOCKED.
+        elif hw_state == "LOCKED":
+            return 423, self.error_response("Box is Locked")
+        # END SECURITY
+
         # Set alarm
         elif path == '/edit.json':
             if set(["h", "m", "mb", "mf"]).issubset(set(qs_ns)) and \
@@ -166,7 +200,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                             'dows', 'dowu'):
                         if dow in qs_ns:
                             dsow.append(qs_vs[qs_ns.index(dow)])
-                            Hardware.add_new_alarm(h, m, mb, mf, dsow)
+                    Hardware.add_new_alarm(h, m, mb, mf, dsow)
                     return 200, self.simple_response("Success Adding Alarm")
                 except Exception:
                     err = "".join(traceback.format_exception(*sys.exc_info()))
@@ -196,37 +230,22 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             else:
                 return 500, self.error_response("Missing valid parameters");
 
-        # Reset the PRAM
-        elif path == '/reset.json':
-            if (qs_ns, qs_vs) == (["reset", ], ["yes_really", ]):
-                try:
-                    self.kill_this_process = True
-                    Hardware.PRAM_clear()
-                    return 200, self.simple_response("Box Reset.  Restarting now.")
-                except Exception:
-                    err = "".join(traceback.format_exception(*sys.exc_info()))
-                    print(f"{self.path}:\n{err}", file=sys.stderr)
-                    return 500, self.error_response(err)
-            else:
-                return 500, self.error_response("Missing valid parameter");
 
         # Unlock Box for 1 Minute
         elif path == '/unlock.json':
-            if (qs_ns, qs_vs) == (["unlockonemin", ], ["true", ]):
-                try:
-                    h = Hardware.StateVariablesAlarmThread.manually_unlock_for_a_minute()
-                    return 200, self.simple_response("Successfully unlocked")
-                except Exception:
-                    err = "".join(traceback.format_exception(*sys.exc_info()))
-                    print(f"{self.path}:\n{err}", file=sys.stderr)
-                    return 500, self.error_response(err)
-            else:
-                return 500, self.error_response("Missing valid parameter");
+            try:
+                h = Hardware.StateVariablesAlarmThread.manually_unlock_for_a_minute()
+                return 200, self.simple_response("Successfully unlocked")
+            except Exception:
+                err = "".join(traceback.format_exception(*sys.exc_info()))
+                print(f"{self.path}:\n{err}", file=sys.stderr)
+                return 500, self.error_response(err)
 
         # Enable/Disable Alarm
         elif path == '/toggle.json':
             if qs_ns == ["toggleaid", ]:
                 try:
+                    print(qs_vs[0])
                     h = Hardware.toggle_alarm(int(qs_vs[0]))
                     return 200, self.simple_response("Successfully toggled")
                 except Exception:
@@ -249,62 +268,55 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             else:
                 return 500, self.error_response("Missing id parameter");
 
-        # Legacy Routes
-        elif not qs_ns:
-            if path == '/diags':
-                return 200, HTMLContentWrapper.get_diag_page()
+            # Legacy Routes
+            # elif path == '/reset':
+            #     return 200, HTMLContent.get_reset_page()
+            #
+            # elif path == '/settime':
+            #     if Hardware.get_state_name()[0] == 'LOCKED':
+            #         return 200, HTMLContent.get_index_LOCKED_page(
+            #                 Hardware.fmt_datetime_local(expect_ch_dt_utc),
+            #                 Hardware.fmt_datetime_until(expect_ch_dt_utc))
+            #     else:
+            #         rtc_dt_utc = Hardware.get_datetime()
+            #         rtc_dt_local = Hardware.fmt_datetime_local(rtc_dt_utc)
+            #         rtc_dt_utc = Hardware.fmt_datetime(rtc_dt_utc)
+            #         return 200, HTMLContent.get_settime_page(
+            #                 Hardware.get_common_timezones(),
+            #                 rtc_dt_utc, rtc_dt_local,
+            #                 )
 
-            elif path == '/log':
-                return 200, HTMLContent.get_log_page()
-
-            elif path == '/reset':
-                return 200, HTMLContent.get_reset_page()
-
-            elif path == '/settime':
-                if Hardware.get_state_name()[0] == 'LOCKED':
-                    return 200, HTMLContent.get_index_LOCKED_page(
-                            Hardware.fmt_datetime_local(expect_ch_dt_utc),
-                            Hardware.fmt_datetime_until(expect_ch_dt_utc))
-                else:
-                    rtc_dt_utc = Hardware.get_datetime()
-                    rtc_dt_local = Hardware.fmt_datetime_local(rtc_dt_utc)
-                    rtc_dt_utc = Hardware.fmt_datetime(rtc_dt_utc)
-                    return 200, HTMLContent.get_settime_page(
-                            Hardware.get_common_timezones(),
-                            rtc_dt_utc, rtc_dt_local,
-                            )
-
-            elif path == '/':
-                hw_state, expect_ch_dt_utc = Hardware.get_state_name()
-
-                if hw_state == 'NEW':
-                    return 200, HTMLContent.get_index_NEW_page()
-
-                elif hw_state == 'LOCKED':
-                    return 200, HTMLContent.get_index_LOCKED_page(
-                            Hardware.fmt_datetime_local(expect_ch_dt_utc),
-                            Hardware.fmt_datetime_until(expect_ch_dt_utc))
-
-                elif hw_state in ('NOALARMS', 'UNLOCKED'):
-                    return 200, HTMLContent.get_index_NOALARMS_UNLOCKED_page(
-                            Hardware.fmt_datetime_local(
-                                Hardware.get_datetime()),
-                            Hardware.get_alarms_for_noalarm_page())
-
-                elif hw_state == 'OVERRIDE':
-                    rtc_dt_utc = Hardware.get_datetime()
-                    rtc_dt_local = Hardware.fmt_datetime_local(rtc_dt_utc)
-                    rtc_dt_utc = Hardware.fmt_datetime(rtc_dt_utc)
-                    return 200, HTMLContent.get_index_OVERRIDE_page(
-                            rtc_dt_utc, rtc_dt_local,
-                            Hardware.fmt_datetime(expect_ch_dt_utc),
-                            Hardware.fmt_datetime_local(expect_ch_dt_utc))
-
-                elif hw_state == 'CORRUPT':
-                    raise Exception(Hardware.get_unrecoverable_error_str())
-
-                else:
-                    raise Exception("Unknown hardware state:  {hw_state}")
+            # elif path == '/':
+            #     hw_state, expect_ch_dt_utc = Hardware.get_state_name()
+            #
+            #     if hw_state == 'NEW':
+            #         return 200, HTMLContent.get_index_NEW_page()
+            #
+            #     elif hw_state == 'LOCKED':
+            #         return 200, HTMLContent.get_index_LOCKED_page(
+            #                 Hardware.fmt_datetime_local(expect_ch_dt_utc),
+            #                 Hardware.fmt_datetime_until(expect_ch_dt_utc))
+            #
+            #     elif hw_state in ('NOALARMS', 'UNLOCKED'):
+            #         return 200, HTMLContent.get_index_NOALARMS_UNLOCKED_page(
+            #                 Hardware.fmt_datetime_local(
+            #                     Hardware.get_datetime()),
+            #                 Hardware.get_alarms_for_noalarm_page())
+            #
+            #     elif hw_state == 'OVERRIDE':
+            #         rtc_dt_utc = Hardware.get_datetime()
+            #         rtc_dt_local = Hardware.fmt_datetime_local(rtc_dt_utc)
+            #         rtc_dt_utc = Hardware.fmt_datetime(rtc_dt_utc)
+            #         return 200, HTMLContent.get_index_OVERRIDE_page(
+            #                 rtc_dt_utc, rtc_dt_local,
+            #                 Hardware.fmt_datetime(expect_ch_dt_utc),
+            #                 Hardware.fmt_datetime_local(expect_ch_dt_utc))
+            #
+            #     elif hw_state == 'CORRUPT':
+            #         raise Exception(Hardware.get_unrecoverable_error_str())
+            #
+            #     else:
+            #         raise Exception("Unknown hardware state:  {hw_state}")
 
         # Nothing matched (path or query string), so return a 404.
         return 404, HTMLContent.get_path_not_found_page(self.path)
@@ -314,6 +326,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             ext = path.split(".")[-1]
             ext = ext.lower()
             types = {
+                'txt': "text/plain",
                 'html': "text/html",
                 'css': "text/css",
                 'js': "text/javascript",
@@ -324,7 +337,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             }
             return (types[ext], ext)
         else:
-            return "text/html"
+            return ("text/html", "html")
 
     def do_GET(self):
         """We only use the following response codes:

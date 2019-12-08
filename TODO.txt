@@ -6,5 +6,5 @@ Figure out bug with the ATC sometimes failing to save data.
 We have to put "Powered by the Raspberry Pi" somewhere on the outside.
 The ease (possibility) of getting enough boards (may need to contact OEM or CM for the Pi directly).
 Write basic mod instructions (how to save, setup from bare OS, card image, why read-only, MMC can do whatever it wants).
-The synchronization with the state variable bg thread is slightly broken in that a reader can get an inconsistant state if the variables are read between setting the event and the var lock aquisition in the background thread.  This is not so important if there is only ever one person using the web pages at a time, but should be fixed nonetheless.
+The synchronization with the state variable bg thread is slightly broken in that a reader can get an inconsistent state if the variables are read between setting the event and the var lock aquisition in the background thread.  This is not so important if there is only ever one person using the web pages at a time, but should be fixed nonetheless.
 There is a lot of retipition in HTMLContent, sorry.  I didn't spend more abstracting it out b/c I suspect we are going to change all of it anyway.
